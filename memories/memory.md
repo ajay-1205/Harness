@@ -1,5 +1,5 @@
-# Facts about the user
+# Facts
 - Name: Ajay
-- Working on: learning agent architecture by building a toy Hermes
-- Prefers: hands-on, step-by-step learning
-
+- Goal: learn agent architecture via toy Hermes
+- Prefers: hands‑on, step‑by‑step learning
+- Project: hermes‑lite

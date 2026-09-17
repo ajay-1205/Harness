@@ -5,6 +5,7 @@ from openai import OpenAI
 import memory
 import tools
 import skills
+import state
 
 MODEL = "cohere/north-mini-code:free"
 
@@ -39,20 +40,21 @@ def _select_skill_tool(menu):
     }
 
 
-def run_turn(user_message: str, api_key: str):
+def run_turn(user_message: str, api_key: str, session_id: int, history_limit: int = 10):
     client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
 
-    # --- Phase 1: context assembly ---
     layers = memory.load_memory_layers()
     system_prompt = memory.build_system_prompt(layers)
-    print(f"[phase 1] system prompt loaded ({len(system_prompt)} chars)")
+    recent_history = state.get_recent_history(session_id, limit=history_limit)
+    print(f"[phase 1] system prompt loaded ({len(system_prompt)} chars), "
+          f"{len(recent_history)} prior messages pulled from state.db")
 
-    # --- Phase 2: task execution, model chooses freely ---
     menu = skills.list_skills()
     available_tools = tools.TOOL_SCHEMAS + [_select_skill_tool(menu)]
 
     messages = [
         {"role": "system", "content": system_prompt},
+        *recent_history,
         {"role": "user", "content": user_message},
     ]
     resp = client.chat.completions.create(
@@ -88,8 +90,11 @@ def run_turn(user_message: str, api_key: str):
         answer = choice.content
 
     print(f"\n[answer]\n{answer}\n")
+    state.log_message(session_id, "user", user_message)
+    state.log_message(session_id, "assistant", answer)
 
-    # --- Phase 3: memory write-back, isolated decision ---
+
+    #memory write-back
     extract_resp = client.chat.completions.create(
         model=MODEL,
         messages=[
@@ -110,6 +115,15 @@ def run_turn(user_message: str, api_key: str):
 
 
 if __name__ == "__main__":
+    import sys
     key = sys.argv[1] if len(sys.argv) > 1 else input("OpenRouter API key: ")
 
-    run_turn("I just switched jobs, I'm now a backend engineer at a fintech startup. Anyway, what's 15% of 240?", key)
+    state.init_db()
+    sid = state.create_session()
+    print(f"=== session {sid} ===\n")
+
+    print("--- Turn 1 ---")
+    run_turn("What is 47 times 12, minus 6?", key, session_id=sid)
+
+    print("--- Turn 2 (this ONLY works if turn 1 is actually remembered) ---")
+    run_turn("Now divide that by 4.", key, session_id=sid)
